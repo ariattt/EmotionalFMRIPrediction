@@ -1,0 +1,23 @@
+{
+    "Manufacturer": "GE",
+    "ManufacturersModelName": "DISCOVERY_MR750",
+    "ScanningSequence": "EP_GR",
+    "SequenceVariant": "SS",
+    "SeriesDescription": "tr_FMRI_4",
+    "BodyPartExamined": "HEAD",
+    "ProtocolName": "tr_FMRI_4",
+    "ImageType": [
+        "ORIGINAL",
+        "PRIMARY",
+        "EPI",
+        "NONE"
+    ],
+    "AcquisitionDateTime": "2020-02-25T19:23:4.000000",
+    "MagneticFieldStrength": 3,
+    "FlipAngle": 90,
+    "EchoTime": 0.03,
+    "RepetitionTime": 2,
+    "ConversionSoftware": "dcm2niix",
+    "ConversionSoftwareVersion": "v1.0.20170411 GCC4.8.4",
+    "Dcm2bidsVersion": "2.1.4"
+}
