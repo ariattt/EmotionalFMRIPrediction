@@ -3,7 +3,7 @@ import glob
 from os import listdir
 import csv
 import collections
-import numpy as numpy
+import numpy as np
 import nibabel as nib
 
 def find_csv(dir):
@@ -28,8 +28,13 @@ for file in csvs:
     with open(file) as csvfile:
         reader = csv.reader(csvfile, delimiter=',', quotechar='|')
         for row in reader:
+            # skip header
+            if row[0] == "stimulus" or row[0] == 'x': continue
+
             cur = row[0] if row[0].startswith("POFA/fMRI_POFA/") else row[2]
-            if not cur.startswith("POFA/fMRI_POFA"): continue
+            if not cur.startswith("POFA/fMRI_POFA"): 
+                order.append(0) # 0 as rest
+                continue
 
             s_index = cur.find('/', 8)
             tar = []
@@ -55,6 +60,7 @@ def get_map():
                                98, 108, 109],
                    "neutral": [6, 13, 21, 28, 33, 41, 47, 56, 65, 72, 83, 92,
                                99, 110],
+                    "rest": [0]
                    }
     map = {}
     for emo in emotion_classes:
@@ -76,5 +82,96 @@ for nii in niis:
     if "rest" in nii: continue
     fmri.append(nib.load(nii).get_fdata())
 
-print(fmri[0].shape)
+# print(fmri[0].shape)
+def avg(l1, l2): return [(l1[i]+l2[i]) / 2 for i in range(len(l1))]
+
+def inter_120_180(input):
+    if len(input) != 120: terminate("input should have of size 120 but has size " + str(len(input)))
+    res = []
+    for i in range(119):
+        res.append(input[i])
+        if i % 2 == 0: 
+            res.append(avg(input[i], input[i+1]))
+    last = [ input[119][i]*2 - input[118][i] for i in range(len(input[119]))]
+    res.append(last)
+    return res
+
+
+semantic_seq = []
+map = {'neutral': [1,0,0,0,0],
+        'happy': [0,1,0,0,0],
+        'anger': [0,0,1,0,0],
+        'sad': [0,0,0,1,0],
+        'rest': [0,0,0,0,1]}
+
+for o in orders:
+    cur = []
+    for mood in o:
+        cur.append(map[mood])
+    cur = inter_120_180(cur)
+    np_cur = np.array(cur)
+    semantic_seq.append(np_cur)
+
+
+train_x, train_y, test_x, test_y = semantic_seq[:4], fmri[:4], semantic_seq[4:], fmri[4:]
+n_delays = 5
+
+beta = np.zeros((64, 64, 35, 5, 5))
+def predict(stim, beta):
+    if stim.shape != (180, 5): terminate("stimulate should have of shape (180, 5)")
+    if beta.shape != (5, 5): terminate("beta should be of shape (5, 5")
+    pred = []
+    for i in range(0, 175):
+        res = np.sum(np.multiply(stim[i:i+5], beta))
+        pred.append(res)
+    return np.array(pred)
+
+alpha = 1.0
+def compute_error(xx, yy, zz, intensity, target, bb):
+    if len(intensity) != 175: terminate("intensity should of size 175")
+    if len(target) != 185: terminate("fmri should have of len 185")
+    err = 0
+    for i in range(5, 180):
+        diff = intensity[i-5] - target[i]
+        err += diff ** 2
+    # regularization
+    err += alpha * np.sum(bb ** 2)
+    return err
+
+predicted = []
+num_iter = 100
+thres = 1
+errors = np.zeros((64, 64, 35))
+for xx in range(64):
+    for yy in range(64):
+        for zz in range(35):
+            errors = []
+            for training_epoch in range(num_iter):
+                err1 = err2 = 0
+                eps = 0.0000000000001
+                for i in range(len(train_x)):
+                    stim = train_x[i]
+                    bb = beta[xx][yy][zz]
+                    intensity = predict(stim, bb)
+                    predicted.append(intensity)
+                    err1 += compute_error(xx, yy, zz, intensity, fmri[i][xx][yy][zz], bb)
+                    intensity = predict(stim, bb+eps)
+                    err2 += compute_error(xx, yy, zz, intensity, fmri[i][xx][yy][zz], bb+eps)
+                # training finished for that cell
+                if err1 < thres: break
+
+                derivative = (err2 - err1) / eps
+                step = 0.0000001
+                bb -= step * derivative
+                errors.append(err1)
+            print(errors)
+            # terminate("stop it")
+
+# predicted = np.array(predicted).reshape(4, 64, 64, 35, 175)
+# errors = np.divide(errors, 4)
+
+# train_y = 
+
+                
+    # predict(train_x)
 
