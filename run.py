@@ -129,7 +129,7 @@ for run_y in fmri:
 print(X.shape)
 # (875, 25)
 print(Y.shape)
-# (64, 35, 875)
+# (64, 64, 35, 875)
 # should be able to use built-in package from here
 
 
