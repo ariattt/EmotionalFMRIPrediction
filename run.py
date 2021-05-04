@@ -127,7 +127,9 @@ for run_y in fmri:
     else: Y = np.concatenate((Y, run_y[:,:,:,n_delays:n_delays + 175]), axis=3)
 
 print(X.shape)
+# (875, 25)
 print(Y.shape)
+# (64, 35, 875)
 # should be able to use built-in package from here
 
 
