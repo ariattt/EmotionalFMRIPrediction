@@ -1,3 +1,4 @@
+import re
 import os
 import glob
 from os import listdir
@@ -20,100 +21,94 @@ pwd = os.getcwd()
 csvs = find_csv(pwd + "/orders")
 niis = find_nii(pwd + "/fmri")
 
-if len(csvs) != 5:  terminate("should have 5 csv files")
+if len(csvs) != 5:
+    terminate("should have 5 csv files")
 
-orders = []
-for file in csvs:
-    order = []
-    with open(file) as csvfile:
+# simple interpolation strategy: duplicate every other input
+def interpolate_stimulus(stimulus):
+    if len(stimulus) != 120:
+        terminate("input should have of size 120 but has size " + str(len(input)))
+    longer = []
+    for i, img in enumerate(stimulus):
+        longer.append(img)
+        if i%2 == 1:
+            longer.append(img)
+    assert len(longer) == 180
+    return longer
+
+# find the names of the input images (as strings, e.g. "036a")
+trial_stimuli = []
+for trialfile in csvs:
+    stimulus = []
+    with open(trialfile) as csvfile:
         reader = csv.reader(csvfile, delimiter=',', quotechar='|')
         for row in reader:
             # skip header
             if row[0] == "stimulus" or row[0] == 'x': continue
 
             cur = row[0] if row[0].startswith("POFA/fMRI_POFA/") else row[2]
-            if not cur.startswith("POFA/fMRI_POFA"): 
-                order.append(0) # 0 as rest
-                continue
+            match = re.search("\d{3}[a-c]", cur)
+            img_name = match.group() if match else "" #empty string as rest
+            stimulus.append(img_name)
+    stimulus = interpolate_stimulus(stimulus)
+    trial_stimuli.append(stimulus)
 
-            s_index = cur.find('/', 8)
-            tar = []
-            for c in cur[s_index+1:]:
-                if c >= '0' and c <= '9':
-                    tar.append(c)
-                else: break
-            order.append(int("".join(tar)))
-    orders.append(order)
+# find the corresponding labels of the input images
+emo_classes = {"happy": [1, 7, 14, 22, 29, 34, 35, 42, 48, 57, 66, 73, 74,
+                            84, 85, 93, 100, 101],
+                "sad": [2, 8, 15, 23, 36, 43, 49, 58, 67, 75, 76, 77, 86,
+                        87, 94, 102, 103],
+                "fear": [9, 16, 17, 24, 37, 50, 51, 59, 60, 68, 78, 79,
+                        88, 95, 104],
+                "anger": [3, 10, 18, 25, 30, 38, 44, 52, 53, 61, 62, 69, 80,
+                            89, 96, 105, 106],
+                "surprise": [4, 11, 19, 26, 31, 39, 45, 54, 63, 70, 81, 90,
+                            97, 107],
+                "disgust": [5, 12, 20, 27, 32, 40, 46, 55, 64, 71, 82, 91,
+                            98, 108, 109],
+                "neutral": [6, 13, 21, 28, 33, 41, 47, 56, 65, 72, 83, 92,
+                            99, 110],
+                }
 
-def get_map():
-    emotion_classes = {"happy": [1, 7, 14, 22, 29, 34, 35, 42, 48, 57, 66, 73, 74,
-                             84, 85, 93, 100, 101],
-                   "sad": [2, 8, 15, 23, 36, 43, 49, 58, 67, 75, 76, 77, 86,
-                           87, 94, 102, 103],
-                   "fear": [9, 16, 17, 24, 37, 50, 51, 59, 60, 68, 78, 79,
-                            88, 95, 104],
-                   "anger": [3, 10, 18, 25, 30, 38, 44, 52, 53, 61, 62, 69, 80,
-                             89, 96, 105, 106],
-                   "surprise": [4, 11, 19, 26, 31, 39, 45, 54, 63, 70, 81, 90,
-                                97, 107],
-                   "disgust": [5, 12, 20, 27, 32, 40, 46, 55, 64, 71, 82, 91,
-                               98, 108, 109],
-                   "neutral": [6, 13, 21, 28, 33, 41, 47, 56, 65, 72, 83, 92,
-                               99, 110],
-                    "rest": [0]
-                   }
-    map = {}
-    for emo in emotion_classes:
-        for n in emotion_classes[emo]:
-            map[n] = emo
-    return map
+reverse_map = {}
+for emo in emo_classes:
+    for n in emo_classes[emo]:
+        reverse_map[n] = emo
 
-emotion_map = get_map()
+trial_labels = []
+for stimulus in trial_stimuli:
+    labels = []
+    for img_name in stimulus:
+        if img_name == "":
+            labels.append("rest")
+        elif img_name[-1] != 'a':
+            labels.append("scrambled")
+        else:
+            num = int(img_name[:-1])
+            labels.append(reverse_map[num])
+    trial_labels.append(labels)
 
-for order in orders:
-    for i in range(len(order)):
-        order[i] = emotion_map[order[i]]
-
-for o in orders:
-    print(collections.Counter(o))
+# turn the labels into a one-hot encoding 
+# same number of labels, each with 6 possible classes
+one_hot_labels = np.zeros((*np.shape(trial_labels), 6))
+one_hot_enc = {
+    'neutral': 0, 'happy': 1, 'anger': 2, 'sad': 3, 'scrambled': 4, 'rest': 5
+}
+for i, labels in enumerate(trial_labels):
+    for j, label in enumerate(labels):
+        ind = one_hot_enc[label]
+        one_hot_labels[i, j, ind] = 1
 
 fmri = []
 for nii in niis:
-    if "rest" in nii: continue
+    if "rest" in nii:
+        continue
     fmri.append(nib.load(nii).get_fdata())
 
-# print(fmri[0].shape)
-def avg(l1, l2): return [(l1[i]+l2[i]) / 2 for i in range(len(l1))]
+semantic_seq = one_hot_labels
+print("shape of semantic seq: ", semantic_seq.shape)
+# print(semantic_seq)
 
-def inter_120_180(input):
-    if len(input) != 120: terminate("input should have of size 120 but has size " + str(len(input)))
-    res = []
-    for i in range(119):
-        res.append(input[i])
-        if i % 2 == 0: 
-            res.append(avg(input[i], input[i+1]))
-    last = [ input[119][i]*2 - input[118][i] for i in range(len(input[119]))]
-    res.append(last)
-    return res
-
-
-semantic_seq = []
-map = {'neutral': [1,0,0,0,0],
-        'happy': [0,1,0,0,0],
-        'anger': [0,0,1,0,0],
-        'sad': [0,0,0,1,0],
-        'rest': [0,0,0,0,1]}
-
-for o in orders:
-    cur = []
-    for mood in o:
-        cur.append(map[mood])
-    cur = inter_120_180(cur)
-    np_cur = np.array(cur)
-    semantic_seq.append(np_cur)
-
-
-train_x, train_y, test_x, test_y = semantic_seq[:4], fmri[:4], semantic_seq[4:], fmri[4:]
 n_delays = 5
 
 X, Y = [], []
@@ -123,7 +118,6 @@ for run_x in semantic_seq:
     for i in range(180-n_delays):
         X.append(run_x[i:i + n_delays].flatten())
 X = np.array(X)
-print(X.shape)
 
 Y = np.array(Y)
 for run_y in fmri:
@@ -132,10 +126,14 @@ for run_y in fmri:
     if len(Y) == 0: Y = run_y[:,:,:,n_delays:n_delays + 175]
     else: Y = np.concatenate((Y, run_y[:,:,:,n_delays:n_delays + 175]), axis=3)
 
-print(Y[0].shape)
+print(X.shape)
+print(Y.shape)
+# should be able to use built-in package from here
+
 
 '''
 # writing everything by hand
+train_x, train_y, test_x, test_y = semantic_seq[:4], fmri[:4], semantic_seq[4:], fmri[4:]
 
 beta = np.zeros((64, 64, 35, 5, 5))
 def predict(stim, beta):
