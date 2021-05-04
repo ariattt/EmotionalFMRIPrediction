@@ -116,6 +116,27 @@ for o in orders:
 train_x, train_y, test_x, test_y = semantic_seq[:4], fmri[:4], semantic_seq[4:], fmri[4:]
 n_delays = 5
 
+X, Y = [], []
+for run_x in semantic_seq:
+    # 5 runs from the dataset
+    # run_x, run_y = semantic_seq[i], fmri[i]
+    for i in range(180-n_delays):
+        X.append(run_x[i:i + n_delays].flatten())
+X = np.array(X)
+print(X.shape)
+
+Y = np.array(Y)
+for run_y in fmri:
+    # print(run_y.shape)
+    if n_delays+175 >= 185: terminate("n_delay is too large")
+    if len(Y) == 0: Y = run_y[:,:,:,n_delays:n_delays + 175]
+    else: Y = np.concatenate((Y, run_y[:,:,:,n_delays:n_delays + 175]), axis=3)
+
+print(Y[0].shape)
+
+'''
+# writing everything by hand
+
 beta = np.zeros((64, 64, 35, 5, 5))
 def predict(stim, beta):
     if stim.shape != (180, 5): terminate("stimulate should have of shape (180, 5)")
@@ -175,3 +196,4 @@ for xx in range(64):
                 
     # predict(train_x)
 
+'''
